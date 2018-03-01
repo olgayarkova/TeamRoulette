@@ -9,18 +9,18 @@ getmode <- function(v) {
 
 ## DISTANCE FUNCTION
 dist <- function(pool){
-  dm <- data.frame(matrix(NA, nrow(pool), nrow(pool)))
-  colnames(dm) <- pool$TeamID
-  rownames(dm) <- pool$TeamID
-  
   p <- nrow(pool)
+  dm <- data.frame(matrix(NA, p, p))
+  colnames(dm) <- pool$Team.ID
+  rownames(dm) <- pool$Team.ID
+  
   if (p>1){
     for (i in 1:(p-1)){
       for (j in (i+1):p){
-        dm[i, j] <- abs(pool$Cases.Contests[i] - pool$Cases.Contests[j]) +
-          abs(pool$Cases.Bestresult[i] - pool$Cases.Bestresult[j])
+        dm[i, j] <- abs(pool$Case.Experience[i] - pool$Case.Experience[j]) +
+          abs(pool$Case.Result[i] - pool$Case.Result[j])
         
-        if(pool$Team.Full[i] + pool$Team.Full[j] > 4) {dm[i, j] <- NA}
+        if(pool$Members.Count[i] + pool$Members.Count[j] > 4) {dm[i, j] <- NA}
       }
     }
   }
@@ -32,122 +32,169 @@ glue <- function(pool, dm){
   m <- min(dm, na.rm = TRUE)
   indi <- which(dm == m, arr.ind = TRUE)[1, 1]
   indj <- which(dm == m, arr.ind = TRUE)[1, 2]
+  nm <- pool$Members.Count[indi]
   
-  pool$Members[indi] <- paste(pool$Members[indi], pool$Members[indj], sep = ', ')
-  pool$Team.Full[indi] <- pool$Team.Full[indi] + pool$Team.Full[indj]
-  pool$Team.Full[indj] <- 0
-  pool$Cases.Contests[indj] <- NA
-  pool$Cases.Bestresult[indj] <- NA
+  for (j in 1:pool$Members.Count[indj]){
+    pool[indi, 2+nm+j] <- pool[indj, 2+j]
+  }
+  pool$Members.Count[indi] <- pool$Members.Count[indi] + pool$Members.Count[indj]
+  pool$Members.Count[indj] <- 0
+  pool$Case.Experience[indj] <- NA
+  pool$Case.Result[indj] <- NA
   
   pool
 }
 
 
 ## Import data
-data <- read.csv('data.csv', encoding = 'UTF-8', stringsAsFactors = FALSE)
-data.vars <- data.frame(oldvars = colnames(data), stringsAsFactors = FALSE)
-data.vars$newvars <-data.vars$oldvars
+# source('Trim.R')
+data <- read.csv('data.csv', stringsAsFactors = FALSE, encoding = 'UTF-8')
+#data <- data[, -1]
 
-## Correct variables names
-source('CommonFields.R')
-vars <- CommonFields(data.vars)
-colnames(data) <- vars$newvars
+## Clean up the data
+data <- subset(data, Status == 'Complete')
+data <- data[data$Cap.Name != 'тест',]
+data <- data[data$Cap.Name != 'Tест',]
+data <- data[data$Cap.Name != 'test',]
+data <- data[data$Cap.Name != 'Test',]
+
+dpl <- data$Cap.Email[duplicated(data$Cap.Email)]
+
+for(i in 1:length(dpl)){
+  dpl[i]
+  d <- data$Response.ID[data$Cap.Email == dpl[i]]
+  if (length(unique(d))>1){
+    exclude <- d[d != max(d)]
+    data <- data[data$Response.ID != exclude,]
+  }
+}
+
+## Correct variables
+colnames(data)[32] <- 'Team.TR'
+colnames(data)[19] <- 'IP.City'
+data$Team.TR <- data$Team.TR == ''
 
 ## Convert dataset into long form
-data.member1 <- data[, c(1:51)]
-data.member2 <- data[, c(1:28, 52:74)]
-data.member3 <- data[, c(1:28, 75:97)]
-data.member4 <- data[, c(1:28, 98:120)]
+ind.cap <- (1:ncol(data))[substr(colnames(data), 1, 3) == "Cap"]
+ind.team <- (1:ncol(data))[substr(colnames(data), 1, 3) == "Tea"]
+ind.mem1 <- (1:ncol(data))[substr(colnames(data), 1, 7) == "Member1"]
+ind.mem2 <- (1:ncol(data))[substr(colnames(data), 1, 7) == "Member2"]
+ind.mem3 <- (1:ncol(data))[substr(colnames(data), 1, 7) == "Member3"]
+ind.mem4 <- (1:ncol(data))[substr(colnames(data), 1, 7) == "Member4"]
+ind.tech <- 1:(min(ind.cap)-1)
 
-membervars <- data.frame(oldvars = colnames(data.member1), stringsAsFactors = FALSE)
-membervars <- CommonFields(membervars)
-colnames(data.member1) <- membervars$newvars
-colnames(data.member2) <- membervars$newvars
-colnames(data.member3) <- membervars$newvars
-colnames(data.member4) <- membervars$newvars
+vars <- colnames(data[,c(ind.tech, ind.cap, ind.team)])
+vars <- c(vars, substr(colnames(data[,ind.mem1]), 9, max(nchar(colnames(data)))))
 
-data.long <- rbind(data.member1, data.member2, data.member3, data.member4)
+data.mem1 <- data[, c(ind.tech, ind.cap, ind.team, ind.mem1)]
+data.mem2 <- data[, c(ind.tech, ind.cap, ind.team, ind.mem2)]
+data.mem3 <- data[, c(ind.tech, ind.cap, ind.team, ind.mem3)]
+data.mem4 <- data[, c(ind.tech, ind.cap, ind.team, ind.mem4)]
+colnames(data.mem1) <- vars
+colnames(data.mem2) <- vars
+colnames(data.mem3) <- vars
+colnames(data.mem4) <- vars
+
+data.long <- rbind(data.mem1, data.mem2, data.mem3, data.mem4)
+
+## Cleaning and oredering the long data
 data.tidy <- data.long[data.long$Surname != '', ]
 data.ordered <- data.tidy[order(data.tidy$Response.ID),]
+
+## DECIDE WHAT TO DO WITH DUPLICATED PARTICIPANTS FROM ONE TEAM
+dpl <- data.ordered$Email[duplicated(data.ordered$Email)]
+
+for(i in 1:length(dpl)){
+  dpl[i]
+  d <- data.ordered$Response.ID[data.ordered$Email == dpl[i]]
+  if (length(unique(d))>1){
+    exclude <- d[d != max(d)]
+    data.ordered<- data.ordered[data.ordered$Response.ID != exclude,]
+  }
+}
+
 write.csv(data.ordered, 'ordered.csv')
 
+
 ## Identifing teams
-data.ordered$TeamID <- data.ordered$Response.ID
-data.ordered$MemberID <- as.integer(rownames(data.ordered))
+teams <- data.frame(Cap.Email = unique(data.ordered$Cap.Email))
+teams$Members.Count <- c(0)
+teams$Member1 <- c('')
+teams$Member2 <- c('')
+teams$Member3 <- c('')
+teams$Member4 <- c('')
 
-key <- cbind(data.ordered$Email1, data.ordered$Email2, data.ordered$Email3, data.ordered$Email4)
-
-for (i in 1:nrow(key)){
-  key[i,] <- key[i,][order(key[i, ])]
-  data.ordered$TeamKey[i] <- paste(key[i,], collapse='-')
+for (i in 1:length(teams$Cap.Email)){
+  teams$Team.ID[i] <- i
+  data.ordered$Team.ID[data.ordered$Cap.Email == teams$Cap.Email[i]] <- i
+  members <- data.ordered$Email[data.ordered$Cap.Email == teams$Cap.Email[i]]
+  teams$Members.Count[i] <- length(members)
+  data.ordered$Members.Count[data.ordered$Cap.Email == teams$Cap.Email[i]] <- length(members)
+  for (j in 1:length(members)){
+    teams[i, 2+j] <- members[j]
+  }
 }
 
-teamkeys <- unique(data.ordered$TeamKey)
-
-for (i in 1:length(teamkeys)){
-  key <- teamkeys[i]
-  data.ordered$TeamID[data.ordered$TeamKey == teamkeys[i]] <- i
-}
-
-teamlist <- data.frame(table(data.ordered$TeamID))
-colnames(teamlist) <- c('ID', 'Members.Registered')
-teamlist$ID <- as.integer(teamlist$ID)
-
-
-for (i in teamlist$ID){
-  data.ordered$Members.Registered[data.ordered$TeamID == i] <- teamlist$Members.Registered[i]
-}
 
 ## Identifing Team Roulette needs
-data.ordered$TR.Needed <- FALSE
-data.ordered$TR.Needed <- data.ordered$Team.Full != 'все 4 участника'
+data.ordered$TR.Need <- data.ordered$Team.TR
+data.ordered$TR.Need[data.ordered$Members.Count == 4] <- FALSE
 
-data.tr <- data.ordered[data.ordered$TR.Needed, ]
-data.ft <- data.ordered[data.ordered$TR.Needed == FALSE, ]
 
-## Getting work database ready
-wdb <- data.frame(TeamID = data.tr$TeamID, stringsAsFactors = FALSE)
-wdb$Team.Section <- factor(data.tr$Team.Section,
-                              levels = c('Школьная', 'Младшая (1-3 курс)', 'Старшая (4 курс и выше)'))
-wdb$Team.Full <- factor(data.tr$Team.Full, levels = c('я один', '2 участника', '3 участника'))
-wdb$MemberID <- data.tr$MemberID
-wdb$Homecity <- as.character(data.tr$Homecity)
-wdb$Institution <- as.character(data.tr$Uni)
-wdb$Institution[wdb$Institution == 'ВУЗа нет в списке'] <- as.character(data.tr$Uni.Custom[data.tr$Uni == 'ВУЗа нет в списке'])
-wdb$Institution[wdb$Institution == ''] <- as.character(data.tr$School[data.tr$Uni == ''])
-wdb$Cases.Contests <- factor(data.tr$Cases.Contests,
-                             levels = c('', 'Не участвовал', '1 раз', '2-3 раза', '4-5 раз', 'Больше 5 раз'))
-wdb$Cases.Bestresult <- factor(data.tr$Cases.Bestresult,
-                               levels = c('', 'Участник', 'High Quality 25%', 'High Quality 15%', 'Полуфиналист',
-                                          'Финалист', 'Призер (2-3 место)', 'Победитель (1 место)'))
+data.ft <- data.ordered[!data.ordered$TR.Need,]
+data.tr <- data.ordered[data.ordered$TR.Need,]
 
-## TeamRoulette
-teams <- unique(data.frame(cbind(TeamID = wdb$TeamID,
-                                 Team.Full = wdb$Team.Full,
-                                 Team.Section = wdb$Team.Section)))
-for (i in teams$TeamID){
-  teams$Homecity[teams$TeamID == i] <- getmode(wdb$Homecity[wdb$TeamID == i])
-  teams$Institution[teams$TeamID == i] <- getmode(wdb$Institution[wdb$TeamID == i])
-  teams$Cases.Contests[teams$TeamID == i] <- mean(as.integer(wdb$Cases.Contests[wdb$TeamID == i]))
-  teams$Cases.Bestresult[teams$TeamID == i] <- mean(as.integer(wdb$Cases.Bestresult[wdb$TeamID == i]))
-  
-  members <- wdb$MemberID[data.tr$TeamID == i]
-  teams$Members[teams$TeamID == i] <- paste(members, collapse = ', ')
+teamlist.tr <- unique(data.tr$Team.ID)
+teams$TR.Need <- FALSE
+for (i in teamlist.tr){
+  teams$TR.Need[teams$Team.ID == i] <- TRUE
 }
 
-teams <- teams[order(teams$Team.Full, decreasing = TRUE),]
 
-sections <- unique(teams$Team.Section)
-cities <- unique(teams$Homecity)
-institutions <- unique(teams$Institution)
+teams.ft <- teams[!teams$TR.Need,]
+teams.tr <- teams[teams$TR.Need,]
+teams.init <- teams[teams$TR.Need,]
+
+## Getting work database ready
+
+wdb <- data.frame(Team.ID = data.tr$Team.ID, stringsAsFactors = FALSE)
+wdb$Team.Section <- factor(data.tr$Team.Section,
+                              levels = c(''))
+wdb$Members.Count <- as.integer(data.tr$Members.Count)
+wdb$Email <- as.character(data.tr$Email)
+wdb$City <- as.character(data.tr$City)
+wdb$City[wdb$City == 'Другое'] <- data.tr$City.Other[data.tr$City == 'Другое']
+wdb$Uni <- as.character(data.tr$Uni)
+wdb$Uni[wdb$Uni == 'Вуза нет в списке'] <- data.tr$Uni.Other[data.tr$Uni == 'Вуза нет в списке']
+wdb$Case.Experience <- factor(data.tr$Case.Experience,
+                              levels = c("Не участвовал", "1 раз", "2-3 раза", "Больше 3 раз"))
+wdb$Case.Result <- factor(data.tr$Case.Result,
+                          levels = c("", "Участник", "High Quality 25 %", "High Quality 15 %",
+ 
+                                                                         "Полуфиналист", "Финалист", "Призер (2-3 место)", "Победитель (1 место)"))
+
+## TeamRoulette
+### Teams Matrix
+for (i in teams.tr$Team.ID){
+  teams.tr$Team.Section[teams.tr$Team.ID == i] <- getmode(wdb$Team.Section[wdb$Team.ID == i])
+  teams.tr$City[teams.tr$Team.ID == i] <- getmode(wdb$City[wdb$Team.ID == i])
+  teams.tr$Uni[teams.tr$Team.ID == i] <- getmode(wdb$Uni[wdb$Team.ID == i])
+  teams.tr$Case.Experience[teams.tr$Team.ID == i] <- mean(as.integer(wdb$Case.Experience[wdb$Team.ID == i]))
+  teams.tr$Case.Result[teams.tr$Team.ID == i] <- mean(as.integer(wdb$Case.Result[wdb$Team.ID == i]))
+}
+
+teams.tr <- teams.tr[order(teams.tr$Members.Count, decreasing = TRUE),]
+if (length(unique(teams.tr$Team.Section)) == 1){teams.tr$Team.Section <- "No Section"}
+### Unique values
+sections <- unique(teams.tr$Team.Section)
+cities <- unique(teams.tr$City)
+institutions <- unique(teams.tr$Uni)
 
 ## Optimal distribution: Educational institution and Homesity match
-for (s in sections){
+for (s in 1:length(sections)){
   for (c in 1:length(cities)){
     for (i in 1:length(institutions)){
-      pool <- subset(teams, (Team.Section == s)&
-                       (Homecity == cities[c])&
-                       (Institution == institutions[i]))
+      pool <- subset(teams.tr, (City == cities[c])&(Uni == institutions[i])&(Team.Section == sections[s]))
       if (nrow(pool) > 1){
         n <- nrow(pool)*2
         for (j in 1:n){
@@ -158,64 +205,97 @@ for (s in sections){
               j <- n*2
           }
         }
-
-        for (m in pool$TeamID){
-          teams$MembersNew[teams$TeamID == m] <- pool$Members[pool$TeamID == m]
-          teams$Team.Full[teams$TeamID == m] <- pool$Team.Full[pool$TeamID == m]
-          teams$Cases.Contests[teams$TeamID == m] <- pool$Cases.Contests[pool$TeamID == m]
-          teams$Cases.Bestresult[teams$TeamID == m] <- pool$Cases.Bestresult[pool$TeamID == m]
-          teams$MembersNew[teams$TeamID == m] <- pool$Members[pool$TeamID == m]
+        for (m in pool$Team.ID){
+          teams.tr$Member1[teams.tr$Team.ID == m] <- pool$Member1[pool$Team.ID == m]
+          teams.tr$Member2[teams.tr$Team.ID == m] <- pool$Member2[pool$Team.ID == m]
+          teams.tr$Member3[teams.tr$Team.ID == m] <- pool$Member3[pool$Team.ID == m]
+          teams.tr$Member4[teams.tr$Team.ID == m] <- pool$Member4[pool$Team.ID == m]
+          
+          teams.tr$Members.Count[teams.tr$Team.ID == m] <- pool$Members.Count[pool$Team.ID == m]
+          teams.tr$Case.Experience[teams.tr$Team.ID == m] <- pool$Case.Experience[pool$Team.ID == m]
+          teams.tr$Case.Result[teams.tr$Team.ID == m] <- pool$Case.Result[pool$Team.ID == m]
         }
       }
     }
   }
 }
-
-teams <- teams[teams$Team.Full > 0,]
-teams$MembersNew[is.na(teams$MembersNew)] <- teams$Members[is.na(teams$MembersNew)]
-teams$MembersOriginal <- teams$Members
-teams$Members <- teams$MembersNew
+teams.tr <- teams.tr[teams.tr$Members.Count > 0,]
 
 ## Less quality: Homecity match
-for (s in sections){
+for (s in 1:length(sections)){
   for (c in 1:length(cities)){
-    
-    pool <- subset(teams, (Team.Section == s)&
-                 (Homecity == cities[c]))
+    pool <- subset(teams.tr, (City == cities[c])&(Team.Section == sections[s]), Members.Count < 4)
     if (nrow(pool) > 1){
       n <- nrow(pool)*2
       for (j in 1:n){
         dm <- dist(pool)
         if (sum(!is.na(dm)) != 0){
           pool <- glue(pool, dm)
-          } else {
-            j <- n*2
-          }
+        } else {
+          j <- n*2
         }
-      for (m in pool$TeamID){
-        teams$Team.Full[teams$TeamID == m] <- pool$Team.Full[pool$TeamID == m]
-        teams$Cases.Contests[teams$TeamID == m] <- pool$Cases.Contests[pool$TeamID == m]
-        teams$Cases.Bestresult[teams$TeamID == m] <- pool$Cases.Bestresult[pool$TeamID == m]
-        teams$MembersNew[teams$TeamID == m] <- pool$Members[pool$TeamID == m]
+      }
+      for (m in pool$Team.ID){
+        teams.tr$Member1[teams.tr$Team.ID == m] <- pool$Member1[pool$Team.ID == m]
+        teams.tr$Member2[teams.tr$Team.ID == m] <- pool$Member2[pool$Team.ID == m]
+        teams.tr$Member3[teams.tr$Team.ID == m] <- pool$Member3[pool$Team.ID == m]
+        teams.tr$Member4[teams.tr$Team.ID == m] <- pool$Member4[pool$Team.ID == m]
+        
+        teams.tr$Members.Count[teams.tr$Team.ID == m] <- pool$Members.Count[pool$Team.ID == m]
+        teams.tr$Case.Experience[teams.tr$Team.ID == m] <- pool$Case.Experience[pool$Team.ID == m]
+        teams.tr$Case.Result[teams.tr$Team.ID == m] <- pool$Case.Result[pool$Team.ID == m]
       }
     }
   }
 }
 
-teams <- teams[teams$Team.Full > 0,]
-teams$MembersNew[is.na(teams$MembersNew)] <- teams$Members[is.na(teams$MembersNew)]
-teams$Members <- teams$MembersNew
+teams.tr <- teams.tr[teams.tr$Members.Count > 0,]
 
-## Rewriting members' teams
-memberslist <- strsplit(teams$Members, split =", ")
-newID <- data.frame(TeamID = rep(teams$TeamID, sapply(memberslist, length)),
-                    Team.Full = rep(teams$Team.Full, sapply(memberslist, length)),
-                    MemberID = as.integer(unlist(memberslist)))
-for (i in newID$MemberID){
-  data.tr$TeamID.New[data.tr$MemberID == i] <- newID$TeamID[newID$MemberID == i]
+# Lowest Quality: Different cities, different unies
+for (s in 1:length(sections)){
+  pool <- subset(teams.tr, Team.Section == sections[s], Members.Count < 4)
+  if (nrow(pool) > 1){
+    n <- nrow(pool)*2
+    for (j in 1:n){
+      dm <- dist(pool)
+      if (sum(!is.na(dm)) != 0){
+        pool <- glue(pool, dm)
+      } else {
+        j <- n*2
+      }
+    }
+    for (m in pool$Team.ID){
+      teams.tr$Member1[teams.tr$Team.ID == m] <- pool$Member1[pool$Team.ID == m]
+      teams.tr$Member2[teams.tr$Team.ID == m] <- pool$Member2[pool$Team.ID == m]
+      teams.tr$Member3[teams.tr$Team.ID == m] <- pool$Member3[pool$Team.ID == m]
+      teams.tr$Member4[teams.tr$Team.ID == m] <- pool$Member4[pool$Team.ID == m]
+      
+      teams.tr$Members.Count[teams.tr$Team.ID == m] <- pool$Members.Count[pool$Team.ID == m]
+      teams.tr$Case.Experience[teams.tr$Team.ID == m] <- pool$Case.Experience[pool$Team.ID == m]
+      teams.tr$Case.Result[teams.tr$Team.ID == m] <- pool$Case.Result[pool$Team.ID == m]
+    }
+  }
 }
 
-data.ft$TeamID.New <- data.ft$TeamID
-data.ready <- rbind(data.ft, data.tr)
-write.csv(data.ready, 'rouletted.csv')
+teams.tr <- teams.tr[teams.tr$Members.Count > 0,]
+
+
+## Rewriting members' teams
+for (i in 1:nrow(teams.tr)){
+  id <- teams.tr$Team.ID[i]
+  for (j in 3:6){
+    e <- teams.tr[i,j]
+    mc <- teams.tr$Members.Count[i]
+    data.tr$Team.ID[data.tr$Email == e] <- id
+    data.tr$Members.Count[data.tr$Email == e] <- mc
+  }
+}
+
+data.tr <- data.tr[order(data.tr$Team.ID),]
+
+## Write Rouletted Data
+data.rouletted <- rbind(data.ft, data.tr)
+data.rouletted <- data.rouletted[order(data.rouletted$Team.ID),]
+
+write.csv(data.rouletted, 'rouletted.csv')
 
