@@ -53,20 +53,19 @@ data <- read.csv('data.csv', stringsAsFactors = FALSE, encoding = 'UTF-8')
 
 ## Clean up the data
 data <- subset(data, Status == 'Complete')
-data <- data[data$Cap.Name != 'тест',]
-data <- data[data$Cap.Name != 'Tест',]
+data <- data[data$Cap.Name != '????????',]
+data <- data[data$Cap.Name != '????????',]
 data <- data[data$Cap.Name != 'test',]
 data <- data[data$Cap.Name != 'Test',]
 
-dpl <- data$Cap.Email[duplicated(data$Cap.Email)]
+dpl <- unique(data$Cap.Email[duplicated(data$Cap.Email)])
 
-for(i in 1:length(dpl)){
-  dpl[i]
+for (i in 1:length(dpl)){
   d <- data$Response.ID[data$Cap.Email == dpl[i]]
-  if (length(unique(d))>1){
     exclude <- d[d != max(d)]
-    data <- data[data$Response.ID != exclude,]
-  }
+    for (j in 1:length(exclude)){
+      data <- subset(data, Response.ID != exclude[j])
+    }
 }
 
 ## Correct variables
@@ -167,11 +166,10 @@ wdb$City[wdb$City == 'Другое'] <- data.tr$City.Other[data.tr$City == 'Др
 wdb$Uni <- as.character(data.tr$Uni)
 wdb$Uni[wdb$Uni == 'Вуза нет в списке'] <- data.tr$Uni.Other[data.tr$Uni == 'Вуза нет в списке']
 wdb$Case.Experience <- factor(data.tr$Case.Experience,
-                              levels = c("Не участвовал", "1 раз", "2-3 раза", "Больше 3 раз"))
+                              levels = c("", "Не участвовал", "1 раз", "2-3 раза", "Больше 3 раз"))
 wdb$Case.Result <- factor(data.tr$Case.Result,
                           levels = c("", "Участник", "High Quality 25 %", "High Quality 15 %",
- 
-                                                                         "Полуфиналист", "Финалист", "Призер (2-3 место)", "Победитель (1 место)"))
+                                     "Полуфиналист", "Финалист", "Призер (2-3 место)", "Победитель (1 место)"))
 
 ## TeamRoulette
 ### Teams Matrix
