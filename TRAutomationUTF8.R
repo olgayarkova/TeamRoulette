@@ -53,10 +53,18 @@ data <- read.csv('data.csv', stringsAsFactors = FALSE, encoding = 'UTF-8')
 
 ## Clean up the data
 data <- subset(data, Status == 'Complete')
-data <- data[data$Cap.Name != '????????',]
-data <- data[data$Cap.Name != '????????',]
+data <- data[data$Cap.Name != 'Тест',]
+data <- data[data$Cap.Name != 'тест',]
 data <- data[data$Cap.Name != 'test',]
 data <- data[data$Cap.Name != 'Test',]
+data <- data[data$Cap.Email !='m.yunusova@changellenge.ru',]
+data <- data[data$Cap.Email !='l.sbitneva@changellenge.ru',]
+data <- data[data$Cap.Email !='o.yarkova@changellenge.ru',]
+data <- data[data$Cap.Email !='v.birindzhyan@changellenge.com',]
+data <- data[data$Cap.Email !='ladasbitneva@gmail.com',]
+data <- data[data$Cap.Email !='sbitneva.lada@mail.ru',]
+data <- data[data$Cap.Email !='ollga.yarkova@gmail.com',]
+data <- data[data$Cap.Email !='flamingo-super@narod.ru',]
 
 dpl <- unique(data$Cap.Email[duplicated(data$Cap.Email)])
 
